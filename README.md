@@ -7,11 +7,11 @@ This is just an initial push of a quick utility I use in production.  Feel free 
 
 Dependencies
 ------------
-This does include a copy of Sam Saffron's Dapper that I've added a few extensions to.  SqlTableCreator is a bastard version of code I've collected from forums that I've added to to suite my own needs.
+This does include a copy of Sam Saffron's Dapper that I've added a few extensions to.  SqlTableCreator is a bastard version of code I've collected from forums that I've added to to suit my own needs.
 
 Example Usage
 -------------
-new BulkInsert<RateToInsert>(ratesToInsert)
+new BulkInsert<BlogPost>(allBlogPosts)
 	.SetConnection(DataSource.GetConnectionString("testDB"))
 	.SetTable("blogData")
 	.AddMapping("userId","userId")
