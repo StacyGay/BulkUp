@@ -5,6 +5,10 @@ A simple SQL Server Bulk Insert / Merge API for C#.  Converts object collections
 
 This is just an initial push of a quick utility I use in production.  Feel free to look over.  Add your DB credentials to DataSource.cs or wire in your config file.
 
+Dependencies
+------------
+This does include a copy of Sam Saffron's Dapper that I've added a few extensions to.  SqlTableCreator is a bastard version of code I've collected from forums that I've added to to suite my own needs.
+
 Example Usage
 -------------
 new BulkInsert<RateToInsert>(ratesToInsert)
