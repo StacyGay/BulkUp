@@ -11,6 +11,7 @@ This does include a copy of Sam Saffron's Dapper that I've added a few extension
 
 Example Usage
 -------------
+```C#
 new BulkInsert<BlogPost>(allBlogPosts)
 	.SetConnection(DataSource.GetConnectionString("testDB"))
 	.SetTable("blogData")
@@ -19,3 +20,4 @@ new BulkInsert<BlogPost>(allBlogPosts)
 	.AddMapping("type","contentType")
 	.AddMapping("content","body")
 	.ExecuteMerge(new [] {"userId", "theDate"});
+```
