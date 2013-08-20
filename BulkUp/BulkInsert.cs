@@ -4,13 +4,16 @@ using System.Data;
 using System.Data.SqlClient;
 using System.Linq;
 
+
+
 namespace BulkUp
 {
-	public class BulkInsert<T>
+	public class BulkInsert<T> 
+		where T : new()
 	{
 		public IEnumerable<T> Data { get; set; }
 		public string Table { get; set; }
-		public string ConnectionString { get; set; }
+		public SqlConnection Connection { get; set; }
 		private DataTable dataTable;
 		private IEnumerable<ColumnDetails> tableSchema;
 		private String tempTable = "";
@@ -34,12 +37,9 @@ namespace BulkUp
 				if (dataTable != null)
 					dataTable.Dispose();
 
-				if (tempTable.Length > 0 && ConnectionString.Length > 0)
+				if (tempTable.Length > 0 && Connection != null)
 				{
-					using (var db = DataSource.ConnectCustom(ConnectionString))
-					{
-						db.Execute("DROP TABLE " + tempTable);
-					}
+					Connection.Execute("DROP TABLE " + tempTable);
 				}
 			}
 			catch { }
@@ -51,21 +51,18 @@ namespace BulkUp
 			return this;
 		}
 
-		public BulkInsert<T> SetConnection(string conString)
+		public BulkInsert<T> SetConnection(SqlConnection con)
 		{
-			ConnectionString = conString;
+			Connection = con;
 			return this;
 		}
 
 		public string CreateTempTable()
 		{
-			tempTable = "T"+Guid.NewGuid().ToString().Replace("-","_");
-			using (var db = DataSource.ConnectCustom(ConnectionString))
-			{
-				var tableCreator = new SqlTableCreator(db);
-				tableCreator.DestinationTableName = tempTable;
-				tableSchema = tableCreator.CreateFromSqlTable(Table);
-			}
+			tempTable = "##T"+Guid.NewGuid().ToString().Replace("-","_");
+			var tableCreator = new SqlTableCreator(Connection);
+			tableCreator.DestinationTableName = tempTable;
+			tableSchema = tableCreator.CreateFromSqlTable(Table);
 
 			return tempTable;
 		}
@@ -78,14 +75,23 @@ namespace BulkUp
 
 		public BulkInsert<T> ExecuteInsert(string table)
 		{
-			using (SqlBulkCopy bulkCopy = new SqlBulkCopy(ConnectionString))
+			using (var bulkCopy = new SqlBulkCopy(Connection))
 			{
 				bulkCopy.DestinationTableName = table;
 
 				//SqlBulkCopyColumnMapping courseIDMap = new SqlBulkCopyColumnMapping("courseID", "courseID");
 				//bulkCopy.ColumnMappings.Add(courseIDMap);
 
-				fieldMappings.ForEach(m => bulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping(m.Item1,m.Item2)));
+				// if no mappings, attempt to bulk insert based on reflection
+				if (fieldMappings.Count > 0)
+				{
+					fieldMappings.ForEach(m => bulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping(m.Item1, m.Item2)));	
+				}
+				else
+				{
+					var props = new T().GetType().GetProperties();
+					props.ToList().ForEach(p => bulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping(p.Name, p.Name)));
+				}
 
 				bulkCopy.BulkCopyTimeout = 60;
 				bulkCopy.BatchSize = 5000;
@@ -139,36 +145,34 @@ namespace BulkUp
 				columnsInsert.Add(insertColumn);
 			});
 
-			using (var db = DataSource.ConnectCustom(ConnectionString))
-			{
-				//(" + String.Join(", ", columns) + @") merge_hint
-				string mergeQuery =
-					@"merge " + Table + @" as t
-					using " + tempTable + @" as s 
-						on (" + String.Join(" and ", keysCondition) + @")
-					when matched then 
-						update set " + String.Join(", ", columnsUpdate) + @" 
-					when not matched by target then 
-						insert (" + String.Join(", ", columns) + @") 
-						values (" + String.Join(", ", columnsInsert) + @") ";
-				if(delete)
-					mergeQuery += 
-						@"when not matched by source then
-							delete";
-				mergeQuery += ";";
+			//(" + String.Join(", ", columns) + @") merge_hint
+			string mergeQuery =
+				@"merge " + Table + @" as t
+				using " + tempTable + @" as s 
+					on (" + String.Join(" and ", keysCondition) + @")
+				when matched then 
+					update set " + String.Join(", ", columnsUpdate) + @" 
+				when not matched by target then 
+					insert (" + String.Join(", ", columns) + @") 
+					values (" + String.Join(", ", columnsInsert) + @") ";
+			if(delete)
+				mergeQuery += 
+					@"when not matched by source then
+						delete";
+			mergeQuery += ";";
 
-				try
-				{
-					SqlTransaction trans = db.BeginTransaction();
-					db.Execute(mergeQuery, transaction: trans);
-					trans.Commit();
-				}
-				catch (Exception)
-				{
-					FreeData();
-					throw;
-				}
+			try
+			{
+				SqlTransaction trans = Connection.BeginTransaction();
+				Connection.Execute(mergeQuery, transaction: trans);
+				trans.Commit();
 			}
+			catch (Exception)
+			{
+				FreeData();
+				throw;
+			}
+			
 
 			return this;
 		}
